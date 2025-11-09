@@ -84,6 +84,14 @@ fn run_builtin(cmd: &str, args: &[&str]) -> Option<ShellAction> {
             }
             Some(ShellAction::Continue)
         }
+        "echo" => {
+            for arg in args {
+                print!("{} ", arg);
+            }
+            print!("\n");
+
+            Some(ShellAction::Continue)
+        }
         _ => None,
     }
 }
