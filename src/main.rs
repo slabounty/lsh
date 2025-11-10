@@ -1,18 +1,15 @@
-use std::env;
 use std::io::{self, Write};
 use std::process::{Command, Stdio};
 
 use anyhow::Result;
 
-// Simple enum for builtin result
-#[derive(PartialEq)]
-enum ShellAction {
-    Continue,
-    Exit,
-}
+mod builtins;
+use builtins::{builtins, ShellAction};
 
 fn main() -> Result<()> {
     println!("Welcome to lsh!");
+
+    let builtins = builtins(); // build table once
 
     loop {
         // print the prompt
@@ -35,11 +32,11 @@ fn main() -> Result<()> {
         let parts: Vec<&str> = input.split_whitespace().collect();
         let (cmd, args) = parts.split_first().unwrap();
 
-        // Try builtin
-        match run_builtin(cmd, args) {
-            Some(ShellAction::Exit) => break,
-            Some(ShellAction::Continue) => continue,
-            None => {}
+        if let Some(builtin) = builtins.get(cmd) {
+            match builtin(args, &mut std::io::stdout(), &mut std::io::stderr()) {
+                ShellAction::Exit => break,
+                ShellAction::Continue => continue,
+            }
         }
 
         // Not a builtin → run external
@@ -64,34 +61,5 @@ fn run_external(cmd: &str, args: &[&str]) {
         Err(err) => {
             eprintln!("error running '{}': {}", cmd, err);
         }
-    }
-}
-
-/// Handle built-in shell commands
-fn run_builtin(cmd: &str, args: &[&str]) -> Option<ShellAction> {
-    match cmd {
-        "exit" => Some(ShellAction::Exit),
-        "cd" => {
-            let target = args.get(0).copied().unwrap_or("/");
-            if let Err(e) = env::set_current_dir(target) {
-                eprintln!("cd: {}", e);
-            }
-            Some(ShellAction::Continue)
-        }
-        "pwd" => {
-            if let Ok(dir) = env::current_dir() {
-                println!("{}", dir.display());
-            }
-            Some(ShellAction::Continue)
-        }
-        "echo" => {
-            for arg in args {
-                print!("{} ", arg);
-            }
-            print!("\n");
-
-            Some(ShellAction::Continue)
-        }
-        _ => None,
     }
 }
