@@ -12,6 +12,11 @@ impl  ShellEnv {
         }
     }
 
+    #[cfg(test)]
+    pub fn empty() -> Self {
+        Self { vars: std::collections::HashMap::new() }
+    }
+
     pub fn set_var(&mut self, key: &str, value: &str) {
         self.vars.insert(key.to_string(), value.to_string());
     }

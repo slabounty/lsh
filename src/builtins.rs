@@ -104,6 +104,7 @@ mod tests {
     use super::*;
     use std::fs;
     use std::path::PathBuf;
+    use std::io::Cursor;
 
     use serial_test::serial;
     use tempfile::tempdir;
@@ -115,7 +116,7 @@ mod tests {
         let exit_fn = builtins["exit"];
         let mut buf = Vec::new();
         let mut err_buf = Vec::new();
-        let mut env = ShellEnv::new();
+        let mut env = ShellEnv::empty();
         let result = exit_fn(&[], &mut env, &mut buf, &mut err_buf);
         assert_eq!(result, ShellAction::Exit);
         assert!(buf.is_empty());
@@ -127,7 +128,7 @@ mod tests {
         let echo_fn = builtins["echo"];
         let mut buf = Vec::new();
         let mut err_buf = Vec::new();
-        let mut env = ShellEnv::new();
+        let mut env = ShellEnv::empty();
         let result = echo_fn(&["hello", "world"], &mut env, &mut buf, &mut err_buf);
         assert_eq!(result, ShellAction::Continue);
         let output = String::from_utf8(buf).unwrap();
@@ -139,7 +140,7 @@ mod tests {
     fn test_pwd_prints_current_directory() {
         let mut buf = Vec::new();
         let mut err_buf = Vec::new();
-        let mut env = ShellEnv::new();
+        let mut env = ShellEnv::empty();
         let result = builtin_pwd(&[], &mut env, &mut buf, &mut err_buf);
         assert_eq!(result, ShellAction::Continue);
 
@@ -161,14 +162,14 @@ mod tests {
         // cd into the new directory
         let mut buf = Vec::new();
         let mut err_buf = Vec::new();
-        let mut env = ShellEnv::new();
+        let mut env = ShellEnv::empty();
         let result = builtin_cd(&[tmp_dir.to_str().unwrap()], &mut env, &mut buf, &mut err_buf);
         assert_eq!(result, ShellAction::Continue);
 
         // pwd should now reflect the new directory
         let mut pwd_buf = Vec::new();
         let mut err_buf = Vec::new();
-        let mut env = ShellEnv::new();
+        let mut env = ShellEnv::empty();
         builtin_pwd(&[], &mut env, &mut pwd_buf, &mut err_buf);
         let output = String::from_utf8(pwd_buf).unwrap();
         assert_eq!(output.trim(), tmp_dir.display().to_string());
@@ -210,7 +211,7 @@ mod tests {
     fn test_cd_invalid_path_prints_error() {
         let mut buf = Vec::new();
         let mut err_buf = Vec::new();
-        let mut env = ShellEnv::new();
+        let mut env = ShellEnv::empty();
         let result = builtin_cd(&["/definitely/not/a/real/path"], &mut env, &mut buf, &mut err_buf);
         assert_eq!(result, ShellAction::Continue);
         let output = String::from_utf8(err_buf).unwrap();
@@ -246,7 +247,7 @@ mod tests {
 
         let mut buf = Vec::new();
         let mut err_buf = Vec::new();
-        let mut shell_env = ShellEnv::new();
+        let mut shell_env = ShellEnv::empty();
 
         // Two temporary directories to toggle between
         let dir1 = tempdir().unwrap();
@@ -293,4 +294,103 @@ mod tests {
         // _guard drops here and restores the original cwd
     }
 
+    #[test]
+    #[serial]
+    fn test_cd_dash_goes_writes_to_err_old_pwd_not_set() {
+        // Ensure we restore cwd even if the test panics
+        let _guard = CwdGuard::new();
+
+        let mut buf = Vec::new();
+        let mut err_buf = Vec::new();
+        let mut shell_env = ShellEnv::empty();
+
+        let result = builtin_cd(&["-"], &mut shell_env, &mut buf, &mut err_buf);
+        assert_eq!(result, ShellAction::Continue);
+
+        // No unexpected stderr
+        let stderr = String::from_utf8(err_buf).unwrap();
+        assert_eq!(stderr.trim(), "cd: OLDPWD not set");
+    }
+
+    #[test]
+    fn test_builtin_env_prints_all_vars() {
+        let mut env = ShellEnv::empty();
+        env.set_var("USER", "testuser");
+        env.set_var("HOME", "/tmp");
+        env.set_var("PATH", "/usr/bin");
+
+        let mut output = Cursor::new(Vec::new());
+
+        let result = builtin_env(&[], &mut env, &mut output, &mut std::io::sink());
+        assert!(matches!(result, ShellAction::Continue));
+
+        let output_str = String::from_utf8(output.into_inner()).unwrap();
+
+        // Each env var should appear as key=value followed by newline
+        assert!(output_str.contains("USER=testuser"));
+        assert!(output_str.contains("HOME=/tmp"));
+        assert!(output_str.contains("PATH=/usr/bin"));
+
+        // Should print one per line, so 3 lines total
+        let lines: Vec<&str> = output_str.lines().collect();
+        assert_eq!(lines.len(), 3);
+    }
+
+    #[test]
+    fn test_builtin_set_sets_the_env() {
+
+        let mut env = ShellEnv::empty();
+        let mut buf = Vec::new();
+        let mut err_buf = Vec::new();
+
+        let result = builtin_set(&["hello", "world"], &mut env, &mut buf, &mut err_buf);
+        assert!(matches!(result, ShellAction::Continue));
+
+        assert_eq!(env.get_var("hello").unwrap(), "world");
+    }
+
+    #[test]
+    fn test_builtin_set_without_args_raises_error() {
+
+        let mut env = ShellEnv::empty();
+        let mut buf = Vec::new();
+        let mut err_buf = Vec::new();
+
+        let result = builtin_set(&[], &mut env, &mut buf, &mut err_buf);
+        assert!(matches!(result, ShellAction::Continue));
+
+        // No unexpected stderr
+        let stderr = String::from_utf8(err_buf).unwrap();
+        assert_eq!(stderr.trim(), "usage: set VAR VALUE");
+    }
+
+    #[test]
+    fn test_builtin_unset_with_args_unsets_the_var() {
+
+        let mut env = ShellEnv::empty();
+        let mut buf = Vec::new();
+        let mut err_buf = Vec::new();
+
+        env.set_var("hello", "world");
+
+        let result = builtin_unset(&["hello"], &mut env, &mut buf, &mut err_buf);
+        assert!(matches!(result, ShellAction::Continue));
+
+        assert_eq!(env.get_var("hello"), None);
+    }
+
+    #[test]
+    fn test_builtin_unset_without_args_raises_error() {
+
+        let mut env = ShellEnv::empty();
+        let mut buf = Vec::new();
+        let mut err_buf = Vec::new();
+
+        let result = builtin_unset(&[], &mut env, &mut buf, &mut err_buf);
+        assert!(matches!(result, ShellAction::Continue));
+
+        // No unexpected stderr
+        let stderr = String::from_utf8(err_buf).unwrap();
+        assert_eq!(stderr.trim(), "usage: unset VAR");
+    }
 }
