@@ -44,16 +44,19 @@ fn main() -> Result<()> {
         }
 
         // Not a builtin → run external
-        run_external(cmd, args);
+        run_external(cmd, args, &env);
     }
 
     Ok(())
 }
 
 /// Run an external command (non-builtin)
-fn run_external(cmd: &str, args: &[&str]) {
+fn run_external(cmd: &str, args: &[&str], env: &ShellEnv) {
+    println!("Running: {}", cmd);
     match Command::new(cmd)
         .args(args)
+        .env_clear()      // <-- clear inherited env first
+        .envs(&env.vars)  // ← Send our environment
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
