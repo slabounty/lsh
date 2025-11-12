@@ -6,10 +6,14 @@ use anyhow::Result;
 mod builtins;
 use builtins::{builtins, ShellAction};
 
+mod environment;
+use environment::{ShellEnv};
+
 fn main() -> Result<()> {
     println!("Welcome to lsh!");
 
     let builtins = builtins(); // build table once
+    let mut env = ShellEnv::new();
 
     loop {
         // print the prompt
@@ -33,7 +37,7 @@ fn main() -> Result<()> {
         let (cmd, args) = parts.split_first().unwrap();
 
         if let Some(builtin) = builtins.get(cmd) {
-            match builtin(args, &mut std::io::stdout(), &mut std::io::stderr()) {
+            match builtin(args, &mut env, &mut std::io::stdout(), &mut std::io::stderr()) {
                 ShellAction::Exit => break,
                 ShellAction::Continue => continue,
             }
