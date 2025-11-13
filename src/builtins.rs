@@ -215,7 +215,6 @@ mod tests {
         let result = builtin_cd(&["/definitely/not/a/real/path"], &mut env, &mut buf, &mut err_buf);
         assert_eq!(result, ShellAction::Continue);
         let output = String::from_utf8(err_buf).unwrap();
-        println!("output = {}", output);
         assert!(output.starts_with("cd: "));
     }
 
