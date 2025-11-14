@@ -11,7 +11,9 @@ pub enum ShellAction {
     Exit,
 }
 
-type BuiltinFn = fn(&[&str], &mut ShellEnv, &mut dyn Write, &mut dyn Write) -> ShellAction;
+pub type BuiltinFn = fn(&[&str], &mut ShellEnv, &mut dyn Write, &mut dyn Write) -> ShellAction;
+pub type BuiltinMap = HashMap<&'static str, BuiltinFn>;
+
 
 pub fn builtin_cd(args: &[&str], env: &mut ShellEnv, _out: &mut dyn Write, err: &mut dyn Write) -> ShellAction {
     // Determine the target directory
@@ -87,8 +89,8 @@ pub fn builtin_env(_args: &[&str], env: &mut ShellEnv, out: &mut dyn Write, _err
     ShellAction::Continue
 }
 
-pub fn builtins() -> HashMap<&'static str, BuiltinFn> {
-    let mut map: HashMap<&'static str, BuiltinFn> = HashMap::new();
+pub fn builtins() -> BuiltinMap {
+    let mut map: BuiltinMap = BuiltinMap::new();
     map.insert("cd", builtin_cd);
     map.insert("pwd", builtin_pwd);
     map.insert("echo", builtin_echo);

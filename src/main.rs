@@ -1,55 +1,111 @@
-use std::io::{self, Write};
+use std::fs;
 use std::process::{Command, Stdio};
 
 use anyhow::Result;
+use rustyline::error::ReadlineError;
+use rustyline::DefaultEditor;
 
 mod builtins;
-use builtins::{builtins, ShellAction};
+use builtins::{builtins, ShellAction, BuiltinMap};
 
 mod environment;
 use environment::{ShellEnv};
 
 fn main() -> Result<()> {
-    println!("Welcome to lsh!");
+    print_welcome();
+
+    let mut rl = DefaultEditor::new()?;
+    let history_path = "history.txt";
+    match rl.load_history(history_path) {
+        Ok(_) => {}
+        Err(ReadlineError::Io(_)) => {
+            // History file doesn't exist, create it
+            fs::File::create(history_path)?;
+        }
+        Err(err) => {
+            eprintln!("minishell: Error loading history: {}", err);
+        }
+    }
 
     let builtins = builtins(); // build table once
     let mut env = ShellEnv::new();
 
     loop {
-        // print the prompt
-        print!("> ");
-        io::stdout().flush().unwrap();
+        let readline = rl.readline(">> ");
+        match readline {
+            Ok(input) => {
+                rl.add_history_entry(input.as_str())?;
 
-        // Get the input and continue if there's an error
-        let mut input = String::new();
-        if io::stdin().read_line(&mut input).is_err() {
-            break;
-        }
+                if handle_command(&input, &mut env, &builtins) == ShellAction::Exit {
+                    break;
+                }
 
-        // Trim input and skip empty lines
-        let input = input.trim();
-        if input.is_empty() {
-            continue;
-        }
-
-        // Split the input into command and arguments
-        let parts: Vec<&str> = input.split_whitespace().collect();
-        let (cmd, args) = parts.split_first().unwrap();
-        let expanded_args = expand_args(&args, &env);
-
-        if let Some(builtin) = builtins.get(cmd) {
-            match builtin(&as_str_vec(&expanded_args), &mut env, &mut std::io::stdout(), &mut std::io::stderr()) {
-                ShellAction::Exit => break,
-                ShellAction::Continue => continue,
+            },
+            Err(ReadlineError::Interrupted) => {
+                println!("CTRL-C");
+                break
+            },
+            Err(ReadlineError::Eof) => {
+                println!("CTRL-D");
+                break
+            },
+            Err(err) => {
+                println!("Error: {:?}", err);
+                break
             }
         }
-
-        // Not a builtin → run external
-        run_external(cmd, &as_str_vec(&expanded_args), &env);
     }
+
+    rl.save_history(history_path)?;
+
+    println!("Exiting lsh");
 
     Ok(())
 }
+
+fn print_welcome() {
+    println!(
+        r"
+         _            _            _       _
+        _\ \         / /\         / /\    / /\
+       /\__ \       / /  \       / / /   / / /
+      / /_ \_\     / / /\ \__   / /_/   / / /
+     / / /\/_/    / / /\ \___\ / /\ \__/ / /
+    / / /         \ \ \ \/___// /\ \___\/ /
+   / / /           \ \ \     / / /\/___/ /
+  / / / ____   _    \ \ \   / / /   / / /
+ / /_/_/ ___/\/_/\__/ / /  / / /   / / /
+/_______/\__\/\ \/___/ /  / / /   / / /
+\_______\/     \_____\/   \/_/    \/_/
+"
+    );
+    println!(" Welcome to lsh (pronounced leash)! Type 'exit' to quit.\n");
+}
+
+pub fn handle_command(input: &str, env: &mut ShellEnv, builtins: &BuiltinMap) -> ShellAction {
+    let parts: Vec<&str> = input.split_whitespace().collect();
+    let (cmd, args) = parts.split_first().unwrap();
+    let expanded_args = expand_args(&args, &env);
+
+    // Builtins expect &[&str]
+    let expanded_arg_strs = as_str_vec(&expanded_args);
+
+    // Check if command is a builtin
+    if let Some(builtin_fn) = builtins.get(cmd) {
+        builtin_fn(
+            &expanded_arg_strs,
+            env,
+            &mut std::io::stdout(),
+            &mut std::io::stderr(),
+            )
+    }
+    else
+    {
+        // Otherwise run external command
+        run_external(cmd, &expanded_arg_strs, env)
+    }
+}
+
 
 fn as_str_vec(strings: &[String]) -> Vec<&str> {
     strings.iter().map(|s| s.as_str()).collect::<Vec<_>>()
@@ -78,7 +134,7 @@ fn expand_args(args: &[&str], env: &ShellEnv) -> Vec<String> {
 }
 
 /// Run an external command (non-builtin)
-fn run_external(cmd: &str, args: &[&str], env: &ShellEnv) {
+fn run_external(cmd: &str, args: &[&str], env: &ShellEnv) -> ShellAction {
     match Command::new(cmd)
         .args(args)
         .env_clear()      // <-- clear inherited env first
@@ -94,7 +150,9 @@ fn run_external(cmd: &str, args: &[&str], env: &ShellEnv) {
         Err(err) => {
             eprintln!("error running '{}': {}", cmd, err);
         }
-    }
+    };
+
+    ShellAction::Continue
 }
 
 
