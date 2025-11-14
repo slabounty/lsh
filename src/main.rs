@@ -11,6 +11,9 @@ use builtins::{builtins, ShellAction, BuiltinMap};
 mod environment;
 use environment::{ShellEnv};
 
+mod welcome;
+use welcome::print_welcome;
+
 fn main() -> Result<()> {
     print_welcome();
 
@@ -61,25 +64,6 @@ fn main() -> Result<()> {
     println!("Exiting lsh");
 
     Ok(())
-}
-
-fn print_welcome() {
-    println!(
-        r"
-         _            _            _       _
-        _\ \         / /\         / /\    / /\
-       /\__ \       / /  \       / / /   / / /
-      / /_ \_\     / / /\ \__   / /_/   / / /
-     / / /\/_/    / / /\ \___\ / /\ \__/ / /
-    / / /         \ \ \ \/___// /\ \___\/ /
-   / / /           \ \ \     / / /\/___/ /
-  / / / ____   _    \ \ \   / / /   / / /
- / /_/_/ ___/\/_/\__/ / /  / / /   / / /
-/_______/\__\/\ \/___/ /  / / /   / / /
-\_______\/     \_____\/   \/_/    \/_/
-"
-    );
-    println!(" Welcome to lsh (pronounced leash)! Type 'exit' to quit.\n");
 }
 
 pub fn handle_command(input: &str, env: &mut ShellEnv, builtins: &BuiltinMap) -> ShellAction {
