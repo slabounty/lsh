@@ -20,7 +20,7 @@ mod external;
 
 fn main() -> Result<()> {
     // Print our welcome message.
-    print_welcome();
+    print_welcome(&mut std::io::stdout());
 
     // Create our line editor
     let mut rl = DefaultEditor::new()?;
